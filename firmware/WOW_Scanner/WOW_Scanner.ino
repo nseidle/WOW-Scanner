@@ -53,13 +53,7 @@ void loop()
   int threshold = analogRead(sensePotPin);         // Get the scan distance from the threshold pot
   threshold = map(threshold,0,1023,0,255);         // Conver this 10 bit value to an 8 bit value
 
-  int sensorValue;                                 // Small loop to grab 10 readings and get the average value
-  sensorValue = 0;
-  for(int x = 0 ; x < 10 ; x++){
-    sensorValue += analogRead(senseIRPin);
-  }
-  sensorValue /= 10;
-  sensorValue = map(sensorValue,0,1023,0,255);      // Conver the sensor value to an 8 bit value
+  byte sensorVal = readSensor(); // Small loop to grab 16 readings and get the average value
 
   Serial.print(" Brightness  ");                   // Print some debug information so we can tweak the pots
   Serial.print(brightValue);
@@ -68,34 +62,50 @@ void loop()
   Serial.print(threshold);
 
   Serial.print(" Sensor  ");
-  Serial.print(sensorValue);
+  Serial.print(sensorVal);
 
   // check if sensor is greater than threshold, if it is, blink the light and beep
-  if (threshold < sensorValue)
+  /*if (readSensor() > threshold)
   {
     Serial.print(" Valid scan!");                  // Print some debug information
-    tone(beeperPin,2000,125);                      // Make a beep sound
+//    tone(beeperPin,2000,125);                      // Make a beep sound
 
     //   analogWrite(ledPin, brightValue);              // Turn on valid scan LED
     digitalWrite(ledPin, HIGH);
-    while(threshold < sensorValue) {               // Spin our wheels until user removes the object
-      sensorValue = 0;
-      for(int x = 0 ; x < 4 ; x++){                // 
-        sensorValue += analogRead(senseIRPin);     //
-      }
-      sensorValue /= 4;                            // reduce multiple beeps for the same object
-      sensorValue = map(sensorValue,0,1023,0,255);  // End spin our wheels until user removes the object
-    }
+
+    while(readSensor() > threshold) ; // Spin our wheels until user removes the object
+
     //   analogWrite(ledPin, 0);                        //Turn off Status LED
     digitalWrite(ledPin, LOW);
-    delay(1000);                                   //Wait a second to prevent rapid beeping
+//    delay(1000);                                   //Wait a second to prevent rapid beeping
   }
   else
   {
     //do nothing
     Serial.print(" Not valid scan");
-  }
+  }*/
+
   Serial.println();                                // Start a new line in the debug terminal
+  
+  delay(100);
+}
+
+
+//Takes a series of readings from the analog sensor
+//Reports a value from 0 to 255
+byte readSensor() {
+  #define NUMBER_OF_SAMPLES 16
+  
+  int sensorValue = 0;
+
+  for(int x = 0 ; x < NUMBER_OF_SAMPLES ; x++)
+    sensorValue += analogRead(senseIRPin);
+
+  sensorValue /= NUMBER_OF_SAMPLES;
+
+  sensorValue = map(sensorValue, 0, 1023, 0, 255); //Map to an 8-bit value
+  
+  return(sensorValue);  
 }
 
 
