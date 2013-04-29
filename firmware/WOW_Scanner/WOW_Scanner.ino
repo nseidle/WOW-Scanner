@@ -1,5 +1,6 @@
 /*
-Toy barcode scanner for the World of Wonder Childrens museum in Lafayette, CO
+ Toy barcode scanner for the World of Wonder Childrens museum in Lafayette, CO
+ By Chris Francis
  
  This code is functional, but a work in progress! (make it smaller, better, faster and more reliable)
  
@@ -18,98 +19,116 @@ Toy barcode scanner for the World of Wonder Childrens museum in Lafayette, CO
  I've had some issues with the reliability of stacking headers. It seems if they are not perfectly straight, they may have continuity issues. Change machined pin headers?
  Still need to create an up to date schematic in Eagle and make some board files. Switch off serial debugging once things are running smoothly. (speed up the code)
  
- More TODO:
- Add watch dog timer (250ms) and reset overall system every 4 hours
+ 4-28-2013 (NES): 
+ Many hardware problems. The main board's voltage regulator overheats when 9Vs is applied. Arduino Pro replaced.
+ IDC cable to three trimpots was faulty. Removed cable and the three trim pots. Vol is now directly controlled on amp board.
+ Removed LM386 based amplifier. There was some very noisy feedback. Installed the TPA2005D1: https://www.sparkfun.com/products/11044
+ P-Channel MOSFET was installed incorrectly on low-side of LED power circuit. Replaced with 2N3904 BJT. LED now works analog/correctly.
+ Why is barrel jack mounted on bottom of board? No idea. Can be changed in the future.
+ 
  */
 
 int ledPin = 6;                         // LED on pin 6 (PWM)
 int beeperPin = 7;                      // Beeper on pin 7
 int senseIRPin = A4;                    // Sensor on analog pin 4
-int sensePotPin = A1;                   // Sensitivity pot on analog pin 1
-int brightPotPin = A0;                  // Brightness pot on analog pin 0
+//int sensePotPin = A1;                   // Sensitivity pot on analog pin 1
+int statLED = 13; //On board stat LED
+
+const int threshold = 400; //If the IR reads more than this value, make some noise
+long lastCheck = 0; //This keeps track of the millis for blinking the status LED
+
+//These two functions allow the LED to be really bright when on, and 
+//just barely on when the scanner is in idle mode
+#define LEDON() analogWrite(ledPin, 255)
+#define LEDOFF() analogWrite(ledPin, 10)
 
 void setup()
 {
+  Serial.begin(57600);                   // Start up serial port
+
   pinMode(ledPin, OUTPUT);              // Makes LED pin an output
+  LEDOFF(); //Turn off LED
+  
   pinMode(beeperPin, OUTPUT);           // Makes beeper pin an output
   pinMode(senseIRPin, INPUT);           // Makea IR sensor pin an input
-  pinMode(sensePotPin, INPUT);          // Makes sensitivity pot pin an input
-  pinMode(brightPotPin, INPUT);         // Makes brightness pot pin an input
-  Serial.begin(9600);                   // Start up serial port
+  //pinMode(sensePotPin, INPUT);          // Makes sensitivity pot pin an input
 
-  tone(beeperPin,1000,125);              //Fancy startup sound, just like a real scanner!
+  //Fancy startup sound, just like a real scanner!
+  LEDON();
+  tone(beeperPin, 1000, 125);
   delay(125);
-  tone(beeperPin,1500,125);
+  tone(beeperPin, 1500, 125);
   delay(125);
-  tone(beeperPin,2000,125);
+  tone(beeperPin, 2000, 125);
   delay(125);
+  LEDOFF();
 }
 
 void loop()
 {
-  int brightValue = analogRead(brightPotPin);      // Get the brightness from the brightness pot
-  brightValue = map(brightValue,0,1023,0,255);     // Convert this 10 bit value to an 8 bit value
+  //int threshold = analogRead(sensePotPin);         // Get the scan distance from the threshold pot
+  //threshold = map(threshold,0,1023,0,255);         // Conver this 10 bit value to an 8 bit value
 
-  int threshold = analogRead(sensePotPin);         // Get the scan distance from the threshold pot
-  threshold = map(threshold,0,1023,0,255);         // Conver this 10 bit value to an 8 bit value
+  int sensorVal = readSensor(); // Small loop to grab 16 readings and get the average value
 
-  byte sensorVal = readSensor(); // Small loop to grab 16 readings and get the average value
-
-  Serial.print(" Brightness  ");                   // Print some debug information so we can tweak the pots
-  Serial.print(brightValue);
-
-  Serial.print(" Threshold  ");
-  Serial.print(threshold);
-
-  Serial.print(" Sensor  ");
+  Serial.print("Sensor:");
   Serial.print(sensorVal);
-
-  // check if sensor is greater than threshold, if it is, blink the light and beep
-  /*if (readSensor() > threshold)
-  {
-    Serial.print(" Valid scan!");                  // Print some debug information
-//    tone(beeperPin,2000,125);                      // Make a beep sound
-
-    //   analogWrite(ledPin, brightValue);              // Turn on valid scan LED
-    digitalWrite(ledPin, HIGH);
-
-    while(readSensor() > threshold) ; // Spin our wheels until user removes the object
-
-    //   analogWrite(ledPin, 0);                        //Turn off Status LED
-    digitalWrite(ledPin, LOW);
-//    delay(1000);                                   //Wait a second to prevent rapid beeping
-  }
-  else
-  {
-    //do nothing
-    Serial.print(" Not valid scan");
-  }*/
-
-  Serial.println();                                // Start a new line in the debug terminal
   
-  delay(100);
+  Serial.print(" Threshold:");
+  Serial.println(threshold);
+
+  //If the sensor value is greater than the threshold, make some noise!
+  if (sensorVal > threshold)
+  {
+    tone(beeperPin, 2000, 125); // Make a beep sound
+
+    LEDON(); // Turn on valid scan LED
+
+    while(sensorVal > threshold) // Spin our wheels until user removes the object
+    {
+      sensorVal = readSensor(); // Small loop to grab 16 readings and get the average value
+
+      Serial.print("Scanning - Sensor:");
+      Serial.print(sensorVal);
+      
+      Serial.print(" Threshold:");
+      Serial.println(threshold);
+    }
+
+    LEDOFF(); //Turn off Status LED
+    delay(1000); //Wait a second to prevent rapid beeping
+  }
+
+  //Blink the status LED every four seconds
+  if(millis() - lastCheck > 4000)
+  {
+    lastCheck = millis(); 
+    
+    digitalWrite(statLED, HIGH);
+    delay(50);
+    digitalWrite(statLED, LOW);
+  }
+
+  delay(10);
 }
 
-
 //Takes a series of readings from the analog sensor
-//Reports a value from 0 to 255
-byte readSensor() {
+//Reports a value from 0 to 1023
+int readSensor() 
+{
   #define NUMBER_OF_SAMPLES 16
   
   int sensorValue = 0;
 
   for(int x = 0 ; x < NUMBER_OF_SAMPLES ; x++)
+  {
     sensorValue += analogRead(senseIRPin);
+    delay(1);
+  }
 
   sensorValue /= NUMBER_OF_SAMPLES;
 
-  sensorValue = map(sensorValue, 0, 1023, 0, 255); //Map to an 8-bit value
+  //sensorValue = map(sensorValue, 0, 1023, 0, 255); //Map to an 8-bit value
   
   return(sensorValue);  
 }
-
-
-
-
-
-
